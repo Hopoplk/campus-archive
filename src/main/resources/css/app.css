@@ -203,3 +203,19 @@
     -fx-border-color: #2f5597;
     -fx-background-color: #eaf2ff;
 }
+
+/* ---------- 分类树层级徽标 ---------- */
+.depth-badge {
+    -fx-font-size: 10.5px;
+    -fx-font-weight: bold;
+    -fx-padding: 0 5 0 5;
+    -fx-background-radius: 8;
+    -fx-text-fill: white;
+    -fx-min-width: 16;
+    -fx-alignment: center;
+}
+.depth-badge.depth-0 { -fx-background-color: #1f3864; }
+.depth-badge.depth-1 { -fx-background-color: #2f5597; }
+.depth-badge.depth-2 { -fx-background-color: #237a63; }
+.depth-badge.depth-3 { -fx-background-color: #9a6a12; }
+.depth-badge.depth-4 { -fx-background-color: #7a4f9e; }

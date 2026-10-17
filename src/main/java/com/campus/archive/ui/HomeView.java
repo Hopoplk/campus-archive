@@ -11,6 +11,7 @@ import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -23,6 +24,7 @@ public class HomeView extends VBox {
 
     private static final String DROP_ACTIVE = "drop-active";
     private static final long MAX_FILE_BYTES = 200L * 1024 * 1024;
+    private static final int MAX_FILES = 200;
 
     private final AppContext ctx;
 
@@ -37,11 +39,11 @@ public class HomeView extends VBox {
         Button upload = new Button("＋  上传材料");
         upload.getStyleClass().addAll("button", "primary-button");
         upload.setStyle("-fx-font-size: 15px; -fx-padding: 12 26 12 26;");
-        upload.setOnAction(e -> chooseFile());
+        upload.setOnAction(e -> chooseFiles());
 
         VBox dropArea = new VBox(6,
                 UiKit.label("把文件拖到这里", "drop-hint"),
-                UiKit.label("单次一个文件，不超过 200 MB", "muted"));
+                UiKit.label("可一次拖入多个文件，它们会存入同一个分类，单个不超过 200 MB", "muted"));
         dropArea.setAlignment(Pos.CENTER);
         dropArea.getStyleClass().add("drop-area");
         VBox.setVgrow(dropArea, Priority.ALWAYS);
@@ -58,28 +60,36 @@ public class HomeView extends VBox {
         getChildren().add(card);
     }
 
-    /** 点按钮：直接进文件选择器，选完再打开分类选择窗口。 */
-    private void chooseFile() {
+    /** 点按钮：直接进文件选择器（可多选），选完再打开分类选择窗口。 */
+    private void chooseFiles() {
         FileChooser fc = new FileChooser();
-        fc.setTitle("选择要归档的材料");
+        fc.setTitle("选择要归档的材料（可多选）");
         fc.getExtensionFilters().addAll(
                 new FileChooser.ExtensionFilter("常见材料格式",
                         "*.pdf", "*.doc", "*.docx", "*.png", "*.jpg", "*.jpeg", "*.xls", "*.xlsx"),
                 new FileChooser.ExtensionFilter("全部文件", "*.*"));
-        File picked = fc.showOpenDialog(getScene() == null ? null : getScene().getWindow());
-        if (picked != null) openDialog(picked);
+        List<File> picked = fc.showOpenMultipleDialog(getScene() == null ? null : getScene().getWindow());
+        if (picked != null && !picked.isEmpty()) openDialog(picked);
     }
 
-    private void openDialog(File file) {
-        if (file.isDirectory()) {
-            UiKit.warn("请选择文件，而不是文件夹");
+    /** 过滤目录与超限文件；剩下的作为一批一起进同一个分类。 */
+    private void openDialog(List<File> picked) {
+        List<File> usable = new ArrayList<>();
+        int oversized = 0;
+        for (File f : picked) {
+            if (f.isDirectory()) continue;
+            if (f.length() > MAX_FILE_BYTES) { oversized++; continue; }
+            if (usable.size() >= MAX_FILES) break;
+            usable.add(f);
+        }
+        if (usable.isEmpty()) {
+            UiKit.warn(oversized > 0 ? "所选文件均超过 200 MB，已取消" : "请选择文件，而不是文件夹");
             return;
         }
-        if (file.length() > MAX_FILE_BYTES) {
-            UiKit.warn("「" + file.getName() + "」超过 200 MB，已取消");
-            return;
+        if (oversized > 0) {
+            UiKit.warn("已跳过 " + oversized + " 个超过 200 MB 的文件");
         }
-        new UploadDialog(ctx, file).showAndWait();
+        new UploadDialog(ctx, usable).showAndWait();
     }
 
     /** 整张卡片都是投放热区，拖入时高亮虚线框。 */
@@ -110,17 +120,13 @@ public class HomeView extends VBox {
         });
     }
 
-    /** 单文件模式：多拖了只取第一个并提示，目录直接过滤。 */
+    /** 拖入的多个文件作为一批，一起存入同一个分类。 */
     private boolean openWithDropped(List<File> dropped) {
-        List<File> usable = dropped.stream().filter(f -> !f.isDirectory()).toList();
-        if (usable.isEmpty()) {
+        if (dropped.stream().noneMatch(f -> !f.isDirectory())) {
             UiKit.warn("请拖入文件，而不是文件夹");
             return false;
         }
-        if (usable.size() > 1) {
-            UiKit.warn("一次只能上传一个文件，将使用第一个：\n" + usable.get(0).getName());
-        }
-        openDialog(usable.get(0));
+        openDialog(dropped);
         return true;
     }
 }

@@ -1,6 +1,7 @@
 package com.campus.archive.ui;
 
 import javafx.scene.control.Alert;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextInputDialog;
@@ -69,6 +70,27 @@ public final class UiKit {
     public static Label label(String text, String styleClass) {
         Label l = new Label(text);
         if (styleClass != null) l.getStyleClass().add(styleClass);
+        return l;
+    }
+
+    /**
+     * 对话框自带独立 Scene，不会继承主窗口的样式表；不显式挂上就会退回 JavaFX 默认皮肤
+     * （层级徽标、按钮、文字层级全部失样式）。所有 Dialog 创建后都应调用本方法。
+     */
+    public static void styleDialog(Dialog<?> dialog) {
+        var css = UiKit.class.getResource("/css/app.css");
+        if (css == null) return;
+        var sheets = dialog.getDialogPane().getStylesheets();
+        if (!sheets.contains(css.toExternalForm())) sheets.add(css.toExternalForm());
+    }
+
+    /**
+     * 分类树的层级徽标：用不同底色区分层级，顶层为 0。
+     * 与 TreeView 自身的缩进配合，避免深层节点难以辨认。
+     */
+    public static Label depthBadge(int depth) {
+        Label l = new Label(String.valueOf(depth));
+        l.getStyleClass().addAll("depth-badge", "depth-" + Math.min(depth, 4));
         return l;
     }
 

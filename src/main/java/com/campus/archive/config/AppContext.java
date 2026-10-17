@@ -3,7 +3,6 @@ package com.campus.archive.config;
 import com.campus.archive.dto.MaterialQuery;
 import com.campus.archive.infra.FileStore;
 import com.campus.archive.pattern.export.*;
-import com.campus.archive.pattern.suggest.SuggestionEngine;
 import com.campus.archive.service.*;
 import com.campus.archive.service.impl.*;
 
@@ -11,7 +10,7 @@ import com.campus.archive.service.impl.*;
  * 应用装配根（简单工厂 + 单例）。
  *
  * <p>原型阶段用手工装配代替 Spring 容器：依赖关系只有十几条，显式 new 出来反而比引入容器
- * 更直观，也更容易在答辩时讲清"谁依赖谁"。两个设计模式的装配点都集中在本类，一眼可见。</p>
+ * 更直观，也更容易在答辩时讲清"谁依赖谁"。设计模式的装配点集中在本类，一眼可见。</p>
  */
 public final class AppContext {
 
@@ -34,11 +33,8 @@ public final class AppContext {
         this.repos = new Repositories(database.factory());
         this.fileStore = new FileStore(database.dir("files"), database.dir("vault"));
 
-        // ---------- 模式 ① 策略模式：装配策略上下文 ----------
-        SuggestionEngine suggestionEngine = new SuggestionEngine();
-
         this.securityService = new PrivateSecurityServiceImpl(repos, fileStore);
-        this.materialService = new MaterialServiceImpl(repos, fileStore, securityService, suggestionEngine);
+        this.materialService = new MaterialServiceImpl(repos, fileStore, securityService);
         this.searchService = new SearchServiceImpl(repos);
         this.categoryService = new CategoryServiceImpl(repos);
 

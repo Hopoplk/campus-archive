@@ -51,7 +51,7 @@ class CategoryTreeTest {
     private String uploadTo(String categoryId, String fileName) {
         File f = TestEnv.sample(staging, fileName, "内容 " + fileName + " " + System.nanoTime());
         var r = ctx.materialService().upload(List.of(f),
-                new UploadOptions().setSuggestCategory(false).setCategoryId(categoryId));
+                new UploadOptions().setCategoryId(categoryId));
         assertEquals(1, r.getData().getSuccessCount());
         return ctx.searchService().search(new MaterialQuery(), 1, 100).items().stream()
                 .filter(m -> m.getFileName().equals(fileName)).findFirst().orElseThrow().getId();

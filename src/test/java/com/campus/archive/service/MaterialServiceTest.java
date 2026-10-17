@@ -35,8 +35,8 @@ class MaterialServiceTest {
     }
 
     @Test
-    @DisplayName("上传后材料进入档案，并按类型建议自动归类")
-    void uploadAppliesSuggestionStrategy() {
+    @DisplayName("上传后材料进入档案；未指定分类时落入兜底分类「其他」")
+    void uploadFallsBackToDefaultCategory() {
         Result<UploadSummary> r = ctx.materialService().upload(
                 List.of(file("大学英语四级成绩报告单.png", "cet4 content")), new UploadOptions());
 
@@ -44,9 +44,24 @@ class MaterialServiceTest {
         assertEquals(1, r.getData().getSuccessCount());
 
         Material m = ctx.searchService().search(new MaterialQuery().setKeyword("四级"), 1, 10).items().get(0);
-        assertEquals("证书", m.getCategoryName(), "策略模式①应把图片类材料归入证书分类");
+        assertEquals("其他", m.getCategoryName(), "未指定分类时应落入兜底分类");
         assertEquals(64, m.getContentHash().length());
         assertFalse(m.getIsPrivate());
+    }
+
+    @Test
+    @DisplayName("显式指定分类时，材料直接进入该分类")
+    void uploadIntoExplicitCategory() {
+        String certId = ctx.categoryService().listAll().stream()
+                .filter(c -> "证书".equals(c.getName())).findFirst().orElseThrow().getId();
+
+        Result<UploadSummary> r = ctx.materialService().upload(
+                List.of(file("分类落位测试材料.pdf", "placement content")),
+                new UploadOptions().setCategoryId(certId));
+
+        assertTrue(r.isSuccess(), r.getMessage());
+        Material m = ctx.searchService().search(new MaterialQuery().setKeyword("落位测试"), 1, 10).items().get(0);
+        assertEquals("证书", m.getCategoryName());
     }
 
     @Test

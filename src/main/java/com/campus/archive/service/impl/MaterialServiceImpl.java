@@ -8,8 +8,6 @@ import com.campus.archive.entity.Material;
 import com.campus.archive.entity.TrashRecord;
 import com.campus.archive.infra.CryptoUtil;
 import com.campus.archive.infra.FileStore;
-import com.campus.archive.pattern.suggest.FileMeta;
-import com.campus.archive.pattern.suggest.SuggestionEngine;
 import com.campus.archive.service.MaterialService;
 import com.campus.archive.service.PrivateSecurityService;
 
@@ -25,9 +23,6 @@ import java.util.UUID;
 
 /**
  * 材料管理模块实现。
- *
- * <p>本类是设计模式 ① 策略模式的<b>使用方</b>：它不知道也不关心归类建议究竟由哪个算法产生，
- * 只向 {@link SuggestionEngine} 要一个 {@link Suggestion}。新增识别算法（如 OCR）无需改动本类。</p>
  */
 public class MaterialServiceImpl implements MaterialService {
 
@@ -39,14 +34,11 @@ public class MaterialServiceImpl implements MaterialService {
     private final Repositories repos;
     private final FileStore fileStore;
     private final PrivateSecurityService security;
-    private final SuggestionEngine suggestionEngine;
 
-    public MaterialServiceImpl(Repositories repos, FileStore fileStore,
-                               PrivateSecurityService security, SuggestionEngine suggestionEngine) {
+    public MaterialServiceImpl(Repositories repos, FileStore fileStore, PrivateSecurityService security) {
         this.repos = repos;
         this.fileStore = fileStore;
         this.security = security;
-        this.suggestionEngine = suggestionEngine;
     }
 
     /* ============================ 上传 ============================ */
@@ -79,14 +71,8 @@ public class MaterialServiceImpl implements MaterialService {
                     summary.warnDuplicate(display);
                 }
 
-                Suggestion suggestion = opt.isSuggestCategory()
-                        ? suggestionEngine.suggest(FileMeta.of(display, type, f.length()))
-                        : Suggestion.NONE;
-
-                String categoryId = resolveCategory(suggestion, opt);
-                String finalName = suggestion.suggestedName() != null && !suggestion.suggestedName().isBlank()
-                        ? suggestion.suggestedName() + extensionOf(display)
-                        : display;
+                String categoryId = resolveCategory(opt);
+                String finalName = display;
 
                 String storedPath;
                 try (InputStream in = Files.newInputStream(f.toPath())) {
@@ -119,13 +105,9 @@ public class MaterialServiceImpl implements MaterialService {
         return Result.ok(summary);
     }
 
-    private String resolveCategory(Suggestion suggestion, UploadOptions opt) {
+    private String resolveCategory(UploadOptions opt) {
         if (opt.getCategoryId() != null && !opt.getCategoryId().isBlank()) {
             return opt.getCategoryId();
-        }
-        if (opt.isSuggestCategory() && suggestion.hasCategory()) {
-            Category c = repos.query(d -> d.category().findByName(suggestion.categoryName()));
-            if (c != null) return c.getId();
         }
         return FALLBACK_CATEGORY_ID;
     }
@@ -300,26 +282,4 @@ public class MaterialServiceImpl implements MaterialService {
         return Result.ok();
     }
 
-    /* ============================ 模式 ①：策略的对外入口 ============================ */
-
-    @Override
-    public Suggestion suggest(File file) {
-        if (file == null) return Suggestion.NONE;
-        return suggestionEngine.suggest(FileMeta.of(file.getName(), FileType.of(file.getName()), file.length()));
-    }
-
-    @Override
-    public List<String> availableSuggestionStrategies() {
-        return suggestionEngine.availableStrategies().stream().map(s -> s.name()).toList();
-    }
-
-    @Override
-    public String currentSuggestionStrategy() {
-        return suggestionEngine.strategy().name();
-    }
-
-    @Override
-    public void useSuggestionStrategy(String name) {
-        suggestionEngine.setStrategyByName(name);
-    }
 }

@@ -112,7 +112,7 @@ public final class DemoDataSeeder {
     /** 上传选项的小包装，避免在循环里反复 new。 */
     private record UploadOptionsHolder(com.campus.archive.dto.UploadOptions options) {
         UploadOptionsHolder() {
-            this(new com.campus.archive.dto.UploadOptions().setSuggestCategory(true));
+            this(new com.campus.archive.dto.UploadOptions());
         }
     }
 }

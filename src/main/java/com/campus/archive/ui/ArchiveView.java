@@ -74,9 +74,18 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
             @Override
             protected void updateItem(Category item, boolean empty) {
                 super.updateItem(item, empty);
-                setText(empty || item == null ? null : item.getName());
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                    setStyle("");
+                    return;
+                }
+                int depth = depthOf(getTreeItem());
+                setText(item.getName());
+                // 层级徽标：顶层为 0，与上传窗口保持一致
+                setGraphic(depth < 0 ? null : UiKit.depthBadge(depth));
                 // 回收站那一项用醒目一点的颜色，和真实分类区分开
-                setStyle(!empty && item != null && TRASH_ID.equals(item.getId())
+                setStyle(TRASH_ID.equals(item.getId())
                         ? "-fx-text-fill:#c0392b; -fx-font-weight:bold;" : "");
             }
         });
@@ -280,6 +289,18 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
             if (hit != null) return hit;
         }
         return null;
+    }
+
+    /** 层级编号：根「全部分类」与回收站不参与编号，真实分类从顶层 0 开始。 */
+    private static int depthOf(TreeItem<Category> item) {
+        if (item == null || item.getValue() == null) return -1;
+        String id = item.getValue().getId();
+        if (ALL_ID.equals(id) || TRASH_ID.equals(id)) return -1;
+        int depth = 0;
+        for (TreeItem<Category> p = item.getParent(); p != null && p.getValue() != null; p = p.getParent()) {
+            if (!ALL_ID.equals(p.getValue().getId())) depth++;
+        }
+        return depth;
     }
 
     private Category selectedCategory() {
