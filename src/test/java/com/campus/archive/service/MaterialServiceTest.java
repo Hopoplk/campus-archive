@@ -50,6 +50,26 @@ class MaterialServiceTest {
     }
 
     @Test
+    @DisplayName("锁定时排除私密材料；解锁后私密与普通材料一起显示")
+    void privateMaterialsHiddenWhenLockedAndMixedWhenUnlocked() {
+        AppContext priv = TestEnv.newContext("material-private");
+        priv.securityService().initKey("viewKey123".toCharArray());
+        priv.materialService().upload(List.of(
+                TestEnv.sample(staging, "私密视图测试.pdf", "secret body"),
+                TestEnv.sample(staging, "普通视图测试.pdf", "plain body")), new UploadOptions());
+
+        Material secret = priv.searchService()
+                .search(new MaterialQuery().setKeyword("私密视图"), 1, 5).items().get(0);
+        assertTrue(priv.securityService().markPrivate(secret.getId()).isSuccess());
+        priv.securityService().lock();
+
+        assertEquals(1, priv.searchService().search(new MaterialQuery().setOnlyPrivate(false), 1, 50).total(),
+                "锁定状态只应看到非私密材料");
+        assertEquals(2, priv.searchService().search(new MaterialQuery(), 1, 50).total(),
+                "解锁后不过滤，私密与普通材料一起显示");
+    }
+
+    @Test
     @DisplayName("显式指定分类时，材料直接进入该分类")
     void uploadIntoExplicitCategory() {
         String certId = ctx.categoryService().listAll().stream()

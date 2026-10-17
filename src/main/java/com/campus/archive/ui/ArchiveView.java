@@ -14,9 +14,18 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.*;
+import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.DataFormat;
+import javafx.scene.input.DragEvent;
+import javafx.scene.input.Dragboard;
+import javafx.scene.input.TransferMode;
+import javafx.scene.Group;
+import javafx.scene.Scene;
+import javafx.scene.SnapshotParameters;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 
@@ -46,9 +55,13 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
     private final AppContext ctx;
     private final TreeView<Category> categoryTree = new TreeView<>();
     private final ComboBox<String> typeFilter = new ComboBox<>();
-    private final CheckBox privateOnly = new CheckBox("只看私密材料");
+    private final CheckBox privateOnly = new CheckBox("查看私密材料");
     private final TextField keywordField = new TextField();
     private final TextField categoryKeywordField = new TextField();
+    /** 拖拽载荷格式：材料 ID 列表。用自定义格式，避免从外部拖入的文字误触发。 */
+    private static final DataFormat MATERIAL_IDS = new DataFormat("application/x-campus-material-ids");
+    /** 当前被高亮的投放目标行，拖拽离开时复原。 */
+    private TreeCell<Category> dropHighlight;
     /** 分类 ID → 分类，用于按 parentId 链计算层级（比读 TreeItem 稳定）。 */
     private final Map<String, Category> categoryIndex = new LinkedHashMap<>();
     private final TableView<Material> table = new TableView<>();
@@ -115,7 +128,7 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
         typeFilter.getSelectionModel().selectFirst();
         typeFilter.setOnAction(e -> reload());
 
-        privateOnly.setOnAction(e -> reload());
+        privateOnly.setOnAction(e -> onTogglePrivateView());
 
         keywordField.setPromptText("搜索全库文件名或分类…");
         keywordField.setOnAction(e -> reload());
@@ -129,7 +142,7 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
             keywordField.clear();
             categoryKeywordField.clear();
             typeFilter.getSelectionModel().selectFirst();
-            privateOnly.setSelected(false);
+            exitPrivateView();
             selectTreeNode(ALL_ID);
             reload();
         });
@@ -199,6 +212,7 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         table.setPlaceholder(UiKit.label("没有符合条件的材料", "muted"));
         table.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+        installDragToCategory();
 
         // ---------------- 操作按钮 ----------------
         Button preview = action("预览 / 下载", this::onPreview);
@@ -261,6 +275,10 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
 
     @Override
     public void refresh() {
+        // 每次进入/刷新档案页都与密钥状态对齐：未解锁就不允许停留在私密视图
+        if (privateOnly.isSelected() && !ctx.securityService().isUnlocked()) {
+            privateOnly.setSelected(false);
+        }
         rebuildTree();
         reload();
     }
@@ -507,7 +525,9 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
 
         int ti = typeFilter.getSelectionModel().getSelectedIndex();
         if (ti > 0) q.setFileType(FileType.values()[ti - 1]);
-        if (privateOnly.isSelected()) q.setOnlyPrivate(true);
+        // 私密材料默认不可见；解锁并勾选「查看私密材料」后取消该过滤，私密与普通材料一起显示
+        boolean showPrivate = privateOnly.isSelected() && ctx.securityService().isUnlocked();
+        q.setOnlyPrivate(showPrivate ? null : Boolean.FALSE);
         if (hasKeyword) q.setKeyword(keywordField.getText().trim());
         return q;
     }
@@ -663,6 +683,188 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
         d.setHeaderText(null);
         d.setContentText("目标分类");
         d.showAndWait().ifPresent(c -> report(ctx.materialService().moveToCategory(m.getId(), c.getId())));
+    }
+
+    /* ======================== 拖拽移动分类 ======================== */
+
+    /**
+     * 表格 → 分类树 的拖拽移动。
+     *
+     * <p>规则：回收站视图下禁用（软删除状态改分类语义模糊）；投放目标只能是真实分类，
+     * 「全部分类」与「回收站」是伪节点，一律拒绝并在行上给出红色反馈。</p>
+     */
+    private void installDragToCategory() {
+        // ---- 拖拽源：表格中选中的材料 ----
+        table.setOnDragDetected(e -> {
+            if (isTrashView()) return;
+            List<Material> picked = new ArrayList<>();
+            for (Material m : selected()) {
+                if (m != null) picked.add(m);
+            }
+            if (picked.isEmpty()) return;
+
+            Dragboard db = table.startDragAndDrop(TransferMode.MOVE);
+            ClipboardContent content = new ClipboardContent();
+            content.put(MATERIAL_IDS, picked.stream().map(Material::getId).toList());
+            db.setContent(content);
+            db.setDragView(dragPreview(picked), -12, -12);
+            e.consume();
+        });
+
+        // ---- 投放目标：分类树 ----
+        categoryTree.setOnDragOver(e -> {
+            if (!e.getDragboard().hasContent(MATERIAL_IDS)) {
+                e.consume();
+                return;
+            }
+            TreeCell<Category> cell = cellUnder(e);
+            Category target = droppableCategory(cell);
+            highlight(cell, target != null);
+            if (target != null) e.acceptTransferModes(TransferMode.MOVE);
+            e.consume();
+        });
+
+        categoryTree.setOnDragExited(e -> {
+            clearHighlight();
+            e.consume();
+        });
+
+        categoryTree.setOnDragDropped(e -> {
+            TreeCell<Category> cell = cellUnder(e);
+            Category target = droppableCategory(cell);
+            List<String> ids = null;
+            if (target != null && e.getDragboard().getContent(MATERIAL_IDS) instanceof List<?> raw) {
+                ids = raw.stream().map(String::valueOf).toList();
+            }
+            clearHighlight();
+            boolean done = applyMove(target, ids);
+            e.setDropCompleted(done);
+            e.consume();
+        });
+    }
+
+    /** 拖拽时跟随的预览：只显示选中的材料（最多列 3 条），而不是整张表格。 */
+    private Image dragPreview(List<Material> picked) {
+        VBox box = new VBox(2);
+        box.setStyle("-fx-background-color: #ffffff;"
+                + " -fx-padding: 8 12 8 12;"
+                + " -fx-background-radius: 6;"
+                + " -fx-border-color: #2f5597; -fx-border-radius: 6; -fx-border-width: 1;");
+
+        Label title = new Label("移动 " + picked.size() + " 份材料");
+        title.setStyle("-fx-font-weight: bold; -fx-text-fill: #1f3864;");
+        box.getChildren().add(title);
+
+        picked.stream().limit(3).forEach(m -> {
+            Label l = new Label("· " + m.getFileName());
+            l.setStyle("-fx-font-size: 11px; -fx-text-fill: #2b3445;");
+            box.getChildren().add(l);
+        });
+        if (picked.size() > 3) {
+            Label more = new Label("…等 " + picked.size() + " 份");
+            more.setStyle("-fx-font-size: 11px; -fx-text-fill: #7a8699;");
+            box.getChildren().add(more);
+        }
+
+        // 节点不挂进 Scene 就没有字体度量，快照会退化成 1x4 的空图；
+        // 放进临时 Scene 强制跑一次 CSS 与布局，再截图。
+        new Scene(new Group(box));
+        box.applyCss();
+        box.layout();
+
+        SnapshotParameters params = new SnapshotParameters();
+        params.setFill(Color.TRANSPARENT);
+        return box.snapshot(params, null);
+    }
+
+    /** 从鼠标落点反查所在的 TreeCell。 */
+    @SuppressWarnings("unchecked")
+    private static TreeCell<Category> cellUnder(DragEvent e) {
+        Node n = e.getPickResult().getIntersectedNode();
+        while (n != null && !(n instanceof TreeCell)) n = n.getParent();
+        return n instanceof TreeCell ? (TreeCell<Category>) n : null;
+    }
+
+    /** 只允许投放到真实分类；伪节点（全部分类 / 回收站）与空行返回 null。 */
+    private Category droppableCategory(TreeCell<Category> cell) {
+        if (cell == null || cell.isEmpty() || cell.getTreeItem() == null) return null;
+        Category c = cell.getTreeItem().getValue();
+        if (c == null) return null;
+        String id = c.getId();
+        if (ALL_ID.equals(id) || TRASH_ID.equals(id)) return null;
+        return c;
+    }
+
+    /** 拖拽悬停时的行反馈：合法目标浅蓝，非法目标浅红。 */
+    private void highlight(TreeCell<Category> cell, boolean legal) {
+        if (dropHighlight != null && dropHighlight != cell) restoreCellStyle(dropHighlight);
+        dropHighlight = cell;
+        if (cell == null || cell.getTreeItem() == null || cell.getTreeItem().getValue() == null) return;
+        String bg = legal ? "#eaf2ff" : "#fdecea";
+        cell.setStyle("-fx-background-color:" + bg + "; -fx-text-fill:"
+                + UiKit.depthColor(depthOf(cell.getTreeItem().getValue())) + ";");
+    }
+
+    private void clearHighlight() {
+        if (dropHighlight != null) {
+            restoreCellStyle(dropHighlight);
+            dropHighlight = null;
+        }
+    }
+
+    /** 复原行样式（高亮时整行内联样式被覆盖，需要把文字颜色写回去）。 */
+    private void restoreCellStyle(TreeCell<Category> cell) {
+        Category c = cell.getTreeItem() == null ? null : cell.getTreeItem().getValue();
+        cell.setStyle(c == null ? "" : "-fx-text-fill:" + UiKit.depthColor(depthOf(c)) + ";");
+    }
+
+    /** 落位：逐条移动并刷新列表，返回是否至少成功一条。 */
+    private boolean applyMove(Category target, List<String> ids) {
+        if (target == null || ids == null || ids.isEmpty()) return false;
+        int moved = 0;
+        for (String id : ids) {
+            if (ctx.materialService().moveToCategory(id, target.getId()).isSuccess()) moved++;
+        }
+        if (moved == 0) {
+            statusLabel.setText("未能移动：材料可能已在「" + target.getName() + "」中");
+            return false;
+        }
+        refresh();   // 先刷新，否则 reload() 会把这条提示覆盖掉
+        statusLabel.setText("已把 " + moved + " 份材料移动到「" + target.getName() + "」");
+        return true;
+    }
+
+    /**
+     * 「查看私密材料」开关。
+     *
+     * <p>勾选必须先通过安全密钥验证；取消勾选立即重新上锁（派生密钥从内存清零）。
+     * 未解锁时私密材料在档案页完全不出现——由 {@link #buildQuery()} 默认排除私密材料保证。</p>
+     */
+    private void onTogglePrivateView() {
+        if (!privateOnly.isSelected()) {
+            exitPrivateView();
+            reload();
+            statusLabel.setText("已退出私密视图，私密材料不再显示");
+            return;
+        }
+        if (!ctx.securityService().isEnabled()) {
+            privateOnly.setSelected(false);
+            UiKit.warn("尚未设置安全密钥，请先到「我的」页设置后再查看私密材料");
+            return;
+        }
+        if (!PrivateUnlockDialog.ensureUnlocked(ctx)) {
+            privateOnly.setSelected(false);
+            reload();
+            return;
+        }
+        reload();
+        statusLabel.setText("私密空间已解锁：私密材料已一并显示，取消勾选将重新上锁");
+    }
+
+    /** 退出私密视图：取消勾选并立即锁定。 */
+    private void exitPrivateView() {
+        if (privateOnly.isSelected()) privateOnly.setSelected(false);
+        if (ctx.securityService().isUnlocked()) ctx.securityService().lock();
     }
 
     private void onTogglePrivate() {
