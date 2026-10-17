@@ -42,9 +42,9 @@ public class MainWindow {
         nav.getStyleClass().add("nav-pane");
         nav.getChildren().add(UiKit.label("学业档案管理", "nav-brand"));
 
-        views.put("home", new HomeView(ctx));
+        views.put("home", new HomeView(ctx, this));
         views.put("archive", new ArchiveView(ctx));
-        views.put("settings", new SettingsView(ctx));
+        views.put("settings", new SettingsView(ctx, this));
 
         for (Map.Entry<String, Node> e : views.entrySet()) {
             Button b = new Button(titleOf(e.getKey()));
@@ -87,6 +87,17 @@ public class MainWindow {
 
     public String currentView() {
         return current;
+    }
+
+    /** 「我的」页调用：切到首页并进入布局编辑模式。 */
+    public void beginLayoutEdit() {
+        show("home");
+        if (views.get("home") instanceof HomeView hv) hv.startEditing();
+    }
+
+    /** 「我的」页恢复默认后，让首页重新载入配置。 */
+    public void reloadHomeLayout() {
+        if (views.get("home") instanceof HomeView hv) hv.reloadLayout();
     }
 
     private static String titleOf(String key) {

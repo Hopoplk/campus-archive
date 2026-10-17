@@ -231,3 +231,49 @@
 .tree-cell:selected {
     -fx-background-color: #eaf2ff;
 }
+
+/* ---------- 首页：桌面 + 浮动窗口 ---------- */
+.desktop-pane {
+    -fx-background-color: #eef1f6;
+    -fx-background-radius: 10;
+    -fx-border-color: #dfe5ee;
+    -fx-border-radius: 10;
+    -fx-padding: 0;
+}
+.module-window {
+    -fx-background-color: #ffffff;
+    -fx-background-radius: 8;
+    -fx-border-color: #dbe3ef;
+    -fx-border-radius: 8;
+    -fx-effect: dropshadow(gaussian, rgba(31,56,100,0.12), 10, 0, 0, 3);
+}
+/* 被点中的窗口：边框加深，表示当前编辑对象 */
+.module-window-selected {
+    -fx-border-color: #2f5597;
+    -fx-border-width: 1.6;
+}
+.window-titlebar {
+    -fx-background-color: #f3f7fd;
+    -fx-background-radius: 8 8 0 0;
+    -fx-padding: 6 10 6 10;
+}
+.window-title {
+    -fx-font-size: 12.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1f3864;
+}
+/* 8 向缩放热区：平时透明，选中窗口后显示为深蓝细条 */
+.resize-handle {
+    -fx-background-color: transparent;
+    -fx-background-radius: 2;
+}
+.module-window-selected .resize-handle {
+    -fx-background-color: #2f5597;
+}
+
+/* 上传窗口：按钮铺满整个窗口（底部圆角与窗口一致） */
+.window-fill-button {
+    -fx-font-size: 19px;
+    -fx-background-radius: 0 0 8 8;
+    -fx-padding: 0;
+}

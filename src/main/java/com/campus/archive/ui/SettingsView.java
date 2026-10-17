@@ -18,10 +18,12 @@ import java.nio.file.Path;
 public class SettingsView extends VBox implements MainWindow.Refreshable {
 
     private final AppContext ctx;
+    private final MainWindow window;
     private final Label securityStatus = UiKit.label("", "muted");
 
-    public SettingsView(AppContext ctx) {
+    public SettingsView(AppContext ctx, MainWindow window) {
         this.ctx = ctx;
+        this.window = window;
         getStyleClass().add("content");
         setSpacing(14);
         build();
@@ -29,7 +31,7 @@ public class SettingsView extends VBox implements MainWindow.Refreshable {
     }
 
     private void build() {
-        getChildren().addAll(securityCard(), backupCard());
+        getChildren().addAll(securityCard(), backupCard(), layoutCard());
     }
 
     private VBox securityCard() {
@@ -73,6 +75,30 @@ public class SettingsView extends VBox implements MainWindow.Refreshable {
         VBox box = new VBox(8, UiKit.label("导入 / 导出与备份", "card-title"), actions,
                 UiKit.label("备份包内含全部材料文件与 manifest.json（清单，含 SHA-256 校验和）。"
                         + "导入采用单事务，失败会整体回滚并清理已写入的文件。", "muted"));
+        box.getStyleClass().add("card");
+        return box;
+    }
+
+    /** 个性化：调整首页模块顺序与尺寸，并可一键恢复默认。 */
+    private VBox layoutCard() {
+        Button edit = new Button("调整布局");
+        edit.getStyleClass().addAll("button", "primary-button");
+        edit.setOnAction(e -> window.beginLayoutEdit());
+
+        Button reset = new Button("恢复默认布局");
+        reset.getStyleClass().addAll("button", "ghost-button");
+        reset.setOnAction(e -> {
+            LayoutPlan.defaults().save(ctx.repos());
+            window.reloadHomeLayout();
+            UiKit.info("首页布局已恢复默认");
+        });
+
+        HBox actions = new HBox(8, edit, reset);
+        actions.setAlignment(Pos.CENTER_LEFT);
+
+        VBox box = new VBox(8, UiKit.label("个性化布局", "card-title"), actions,
+                UiKit.label("首页采用窗口式布局：拖动标题栏移动、拖动边框改变大小、点中窗口置顶，"
+                        + "编辑后点「保存」立即生效；随时可以恢复默认。", "muted"));
         box.getStyleClass().add("card");
         return box;
     }
