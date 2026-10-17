@@ -55,13 +55,6 @@ public class MainWindow {
             nav.getChildren().add(b);
         }
 
-        Region spacer = new Region();
-        VBox.setVgrow(spacer, Priority.ALWAYS);
-        nav.getChildren().add(spacer);
-        Label footer = UiKit.label("本地运行 · 无需登录\n数据不出本机", "muted");
-        footer.setStyle("-fx-text-fill:#8ea3c7; -fx-padding: 0 16 8 16;");
-        nav.getChildren().add(footer);
-
         // ---- 顶部栏 ----
         HBox topLeft = new HBox(12, pageTitle);
         topLeft.setAlignment(Pos.CENTER_LEFT);

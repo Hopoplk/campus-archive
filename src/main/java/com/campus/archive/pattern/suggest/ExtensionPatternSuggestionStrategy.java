@@ -4,10 +4,10 @@ import com.campus.archive.dto.Suggestion;
 import com.campus.archive.entity.FileType;
 
 /**
- * 策略实现 B：按文件类型与命名模式给出弱建议，并顺带规范显示名。
+ * 策略实现（默认）：按文件类型与命名模式给出弱建议，并顺带规范显示名。
  *
- * <p>与 A 的分工：A 回答"这是什么"，B 回答"它大概属于哪一类、该叫什么名字"。
- * 例如手机直出的 IMG_20261012_143022.jpg 会被建议命名为「证书材料 2026-10-12.jpg」。</p>
+ * <p>只回答"它大概属于哪一类、该叫什么名字"，不解析文件名语义，因此给出的是低置信度弱建议。
+ * 例如手机直出的 IMG_20261012_143022.jpg 会被建议命名为「材料照片 2026-10-12.jpg」。</p>
  */
 public class ExtensionPatternSuggestionStrategy implements CategorySuggestionStrategy {
 

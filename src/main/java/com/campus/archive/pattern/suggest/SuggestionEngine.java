@@ -19,7 +19,6 @@ public class SuggestionEngine {
 
     public SuggestionEngine() {
         this.available = List.of(
-                new KeywordRuleSuggestionStrategy(),
                 new ExtensionPatternSuggestionStrategy(),
                 new NoopSuggestionStrategy());
         this.strategy = available.get(0);

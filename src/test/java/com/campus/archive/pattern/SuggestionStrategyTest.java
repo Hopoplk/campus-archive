@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * 设计模式 ① 策略模式的验证。
- * 重点验证三件事：算法族可互换、上下文可运行期切换、新增算法不需要改动调用方。
+ * 重点验证三件事：算法族可互换、上下文可运行期切换、关闭建议等价于空对象。
  */
 @DisplayName("设计模式① 策略模式：材料归类建议")
 class SuggestionStrategyTest {
@@ -20,39 +20,26 @@ class SuggestionStrategyTest {
     }
 
     @Test
-    @DisplayName("关键词规则策略能按文件名给出分类")
-    void keywordRuleMatchesCategory() {
-        CategorySuggestionStrategy s = new KeywordRuleSuggestionStrategy();
+    @DisplayName("类型与命名模式策略：图片归入证书，并规范化相机直出的文件名")
+    void patternStrategySuggestsByFileType() {
+        CategorySuggestionStrategy s = new ExtensionPatternSuggestionStrategy();
 
-        assertEquals("证书", s.suggest(meta("大学英语四级成绩报告单.pdf", FileType.PDF)).categoryName());
-        assertEquals("竞赛", s.suggest(meta("数学建模大赛获奖证书.jpg", FileType.IMAGE)).categoryName());
-        assertEquals("实践", s.suggest(meta("志愿服务时长证明.pdf", FileType.PDF)).categoryName());
-        assertEquals("科研", s.suggest(meta("科研立项结题报告.docx", FileType.WORD)).categoryName());
+        Suggestion img = s.suggest(meta("IMG_20261012_143022.jpg", FileType.IMAGE));
+        assertEquals("证书", img.categoryName());
+        assertNotNull(img.suggestedName());
+        assertTrue(img.suggestedName().contains("2026-10-12"));
+        assertTrue(img.confidence() < 0.6, "弱建议的置信度应当明显偏低");
+
+        assertEquals("其他", s.suggest(meta("大学英语四级成绩报告单.pdf", FileType.PDF)).categoryName(),
+                "PDF 无法仅凭类型判断归属，只会落到最笼统的分类");
     }
 
     @Test
-    @DisplayName("命中不了关键词时返回空建议，而不是乱猜")
-    void keywordRuleReturnsNoneWhenNoMatch() {
-        CategorySuggestionStrategy s = new KeywordRuleSuggestionStrategy();
-        Suggestion result = s.suggest(meta("abc123.bin", FileType.OTHER));
+    @DisplayName("判断不出类型时返回空建议，而不是乱猜")
+    void returnsNoneWhenNothingCanBeInferred() {
+        Suggestion result = new ExtensionPatternSuggestionStrategy().suggest(meta("abc123.bin", FileType.OTHER));
         assertFalse(result.hasCategory());
         assertTrue(result.isEmpty());
-    }
-
-    @Test
-    @DisplayName("同一份输入换一个策略就换一套结果——算法族可互换")
-    void strategiesAreInterchangeable() {
-        FileMeta input = meta("IMG_20261012_143022.jpg", FileType.IMAGE);
-
-        Suggestion byKeyword = new KeywordRuleSuggestionStrategy().suggest(input);
-        Suggestion byPattern = new ExtensionPatternSuggestionStrategy().suggest(input);
-
-        // 关键词策略认不出相机直出的文件名，类型策略则能给出弱建议 + 规范命名
-        assertFalse(byKeyword.hasCategory());
-        assertEquals("证书", byPattern.categoryName());
-        assertNotNull(byPattern.suggestedName());
-        assertTrue(byPattern.suggestedName().contains("2026-10-12"));
-        assertTrue(byPattern.confidence() < 0.6, "弱建议的置信度应当明显偏低");
     }
 
     @Test
@@ -67,11 +54,8 @@ class SuggestionStrategyTest {
         SuggestionEngine engine = new SuggestionEngine();
         FileMeta input = meta("IMG_20261012_143022.jpg", FileType.IMAGE);
 
-        assertEquals(3, engine.availableStrategies().size());
-        assertFalse(engine.suggest(input).hasCategory());
-
-        engine.setStrategyByName("类型与命名模式建议");
-        assertEquals("类型与命名模式建议", engine.strategy().name());
+        assertEquals(2, engine.availableStrategies().size());
+        assertEquals("类型与命名模式建议", engine.strategy().name(), "默认策略应为类型与命名模式建议");
         assertTrue(engine.suggest(input).hasCategory());
 
         engine.setStrategyByName("关闭智能建议");
@@ -80,20 +64,8 @@ class SuggestionStrategyTest {
         // 未知名称不应改变当前策略
         engine.setStrategyByName("不存在的策略");
         assertEquals("关闭智能建议", engine.strategy().name());
-    }
 
-    @Test
-    @DisplayName("新增一条关键词规则后立即生效——对扩展开放、对修改关闭")
-    void newRuleTakesEffectWithoutTouchingCallers() {
-        SuggestionEngine engine = new SuggestionEngine();
-        FileMeta input = meta("职业规划认证材料.pdf", FileType.PDF);
-        assertFalse(engine.suggest(input).hasCategory());
-
-        // 答辩演示用：现场往规则表里加一条，调用方（MaterialService）一行都不用动
-        KeywordRuleSuggestionStrategy keyword = (KeywordRuleSuggestionStrategy)
-                engine.availableStrategies().get(0);
-        keyword.rule("竞赛", "职业规划");
-
-        assertEquals("竞赛", engine.suggest(input).categoryName());
+        engine.setStrategyByName("类型与命名模式建议");
+        assertTrue(engine.suggest(input).hasCategory());
     }
 }

@@ -35,16 +35,16 @@ class MaterialServiceTest {
     }
 
     @Test
-    @DisplayName("上传后材料进入档案，并按关键词规则自动归类")
+    @DisplayName("上传后材料进入档案，并按类型建议自动归类")
     void uploadAppliesSuggestionStrategy() {
         Result<UploadSummary> r = ctx.materialService().upload(
-                List.of(file("大学英语四级成绩报告单.pdf", "cet4 content")), new UploadOptions());
+                List.of(file("大学英语四级成绩报告单.png", "cet4 content")), new UploadOptions());
 
         assertTrue(r.isSuccess());
         assertEquals(1, r.getData().getSuccessCount());
 
         Material m = ctx.searchService().search(new MaterialQuery().setKeyword("四级"), 1, 10).items().get(0);
-        assertEquals("证书", m.getCategoryName(), "策略模式①应把「四级」归到证书分类");
+        assertEquals("证书", m.getCategoryName(), "策略模式①应把图片类材料归入证书分类");
         assertEquals(64, m.getContentHash().length());
         assertFalse(m.getIsPrivate());
     }

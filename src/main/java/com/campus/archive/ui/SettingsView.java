@@ -3,7 +3,6 @@ package com.campus.archive.ui;
 import com.campus.archive.config.AppContext;
 import com.campus.archive.dto.ExportResult;
 import com.campus.archive.dto.Result;
-import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
@@ -14,14 +13,12 @@ import java.io.File;
 import java.nio.file.Path;
 
 /**
- * 我的：低频功能集中管理——安全设置、导入导出、回收站入口，以及设计模式应用的现场自证面板。
+ * 我的：低频功能集中管理——安全设置与导入导出。
  */
 public class SettingsView extends VBox implements MainWindow.Refreshable {
 
     private final AppContext ctx;
     private final Label securityStatus = UiKit.label("", "muted");
-    private final Label dataPath = UiKit.label("", "muted");
-    private final Label patternPanel = UiKit.label("", "muted");
 
     public SettingsView(AppContext ctx) {
         this.ctx = ctx;
@@ -32,18 +29,14 @@ public class SettingsView extends VBox implements MainWindow.Refreshable {
     }
 
     private void build() {
-        getChildren().addAll(securityCard(), dataCard(), backupCard(), patternCard());
+        getChildren().addAll(securityCard(), backupCard());
     }
 
     private VBox securityCard() {
         Button init = new Button("设置 / 验证安全密钥");
         init.getStyleClass().addAll("button", "primary-button");
         init.setOnAction(e -> {
-            if (ctx.securityService().isEnabled()) {
-                PrivateUnlockDialog.ensureUnlocked(ctx);
-            } else {
-                PrivateUnlockDialog.ensureUnlocked(ctx);
-            }
+            PrivateUnlockDialog.ensureUnlocked(ctx);
             refresh();
         });
 
@@ -61,15 +54,6 @@ public class SettingsView extends VBox implements MainWindow.Refreshable {
         VBox box = new VBox(8, UiKit.label("私密空间与安全密钥", "card-title"), securityStatus, actions,
                 UiKit.label("密钥经 PBKDF2-HMAC-SHA256（10 万轮）派生，系统只保存盐值与校验值，"
                         + "明文密钥从不落盘；私密材料以 AES-256-GCM 加密后存放于 vault/ 目录。", "muted"));
-        box.getStyleClass().add("card");
-        return box;
-    }
-
-    private VBox dataCard() {
-        dataPath.getStyleClass().add("code-area");
-        VBox box = new VBox(8, UiKit.label("数据位置", "card-title"), dataPath,
-                UiKit.label("无登录体系意味着数据完全属于用户本人；请通过下方备份功能定期导出，"
-                        + "并在更换设备时导入。", "muted"));
         box.getStyleClass().add("card");
         return box;
     }
@@ -93,49 +77,12 @@ public class SettingsView extends VBox implements MainWindow.Refreshable {
         return box;
     }
 
-    private VBox patternCard() {
-        patternPanel.setWrapText(true);
-        Button demoStrategy = new Button("演示：切换归类建议策略");
-        demoStrategy.getStyleClass().addAll("button", "ghost-button");
-        demoStrategy.setOnAction(e -> {
-            var list = ctx.materialService().availableSuggestionStrategies();
-            ChoiceDialog<String> d = new ChoiceDialog<>(ctx.materialService().currentSuggestionStrategy(), list);
-            d.setTitle("策略模式①");
-            d.setHeaderText("运行期替换归类建议算法");
-            d.setContentText("选择策略（不需要重启，也不改动业务代码）");
-            d.showAndWait().ifPresent(name -> {
-                ctx.materialService().useSuggestionStrategy(name);
-                UiKit.info("已切换为：" + ctx.materialService().currentSuggestionStrategy()
-                        + "\n下次上传时，建议结果将由新算法产生。");
-                refresh();
-            });
-        });
-
-        HBox actions = new HBox(8, demoStrategy);
-        actions.setAlignment(Pos.CENTER_LEFT);
-
-        VBox box = new VBox(8, UiKit.label("设计模式应用（现场自证）", "card-title"),
-                patternPanel, actions);
-        box.getStyleClass().add("card");
-        return box;
-    }
-
     @Override
     public void refresh() {
         boolean enabled = ctx.securityService().isEnabled();
         boolean unlocked = ctx.securityService().isUnlocked();
         securityStatus.setText("状态：" + (enabled ? (unlocked ? "已设置密钥，当前【已解锁】" : "已设置密钥，当前【已锁定】") : "尚未启用")
                 + (enabled ? "　连续验证失败次数：" + ctx.securityService().failCount() : ""));
-
-        dataPath.setText("应用数据目录：" + ctx.database().home()
-                + "\n数据库文件　：" + ctx.database().dbFile()
-                + "\n原始材料仓库：files/　私密密文区：vault/　备份输出：backup/");
-
-        patternPanel.setText(
-                "① 策略模式（归类建议）：SuggestionEngine 持有 CategorySuggestionStrategy，当前策略 = "
-                        + ctx.materialService().currentSuggestionStrategy() + "\n"
-                        + "② 模板方法模式（导出/备份）：AbstractArchiveExporter.export() 固定流程骨架，"
-                        + "具体实现 = SelectionExportExporter（选定材料导出）、FullBackupExporter（全量备份）");
     }
 
     private void onExport() {

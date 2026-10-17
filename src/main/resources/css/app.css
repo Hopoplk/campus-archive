@@ -180,3 +180,26 @@
     -fx-text-fill: #2f5597;
     -fx-font-size: 12.5px;
 }
+
+
+/* ---------- 首页拖拽上传区 ---------- */
+.drop-card {
+    -fx-padding: 14;
+}
+.drop-area {
+    -fx-border-color: #b9c6da;
+    -fx-border-style: dashed;
+    -fx-border-width: 1.5;
+    -fx-border-radius: 8;
+    -fx-background-color: #f8fafd;
+    -fx-background-radius: 8;
+}
+.drop-hint {
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #2f5597;
+}
+.drop-card.drop-active .drop-area {
+    -fx-border-color: #2f5597;
+    -fx-background-color: #eaf2ff;
+}

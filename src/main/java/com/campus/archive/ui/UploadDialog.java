@@ -38,7 +38,15 @@ public class UploadDialog extends Dialog<Void> {
     private final ProgressBar progress = new ProgressBar(0);
     private final Label status = UiKit.label("尚未选择文件", "muted");
 
+    private static final long MAX_FILE_BYTES = 200L * 1024 * 1024;
+    private static final int MAX_FILES = 200;
+
     public UploadDialog(AppContext ctx) {
+        this(ctx, List.of());
+    }
+
+    /** 供首页拖拽入口使用：把拖入的文件直接预填进列表，其余流程与点击选择完全一致。 */
+    public UploadDialog(AppContext ctx, List<File> preloaded) {
         this.ctx = ctx;
         setTitle("上传材料");
         setHeaderText("选择文件后会给出分类与命名建议，你也可以完全跳过，直接保存");
@@ -64,6 +72,7 @@ public class UploadDialog extends Dialog<Void> {
                         doUpload();
                     });
                 });
+        if (!preloaded.isEmpty()) addFiles(preloaded, false);
     }
 
     private void build() {
@@ -148,20 +157,37 @@ public class UploadDialog extends Dialog<Void> {
         List<File> picked = fc.showOpenMultipleDialog(owner);
         if (picked == null || picked.isEmpty()) return;
 
+        addFiles(picked, true);
+    }
+
+    /**
+     * 校验并追加文件。点击选择与拖拽预填两个入口共用，保证"单个 200 MB / 每批 200 个"的规则一致。
+     *
+     * @param interactive 用户主动选择时为 true，越限逐个弹窗提示；拖拽预填时静默记入状态栏
+     */
+    private void addFiles(List<File> picked, boolean interactive) {
         int accepted = 0;
+        int skipped = 0;
         for (File f : picked) {
-            if (f.length() > 200L * 1024 * 1024) {
-                UiKit.warn("「" + f.getName() + "」超过 200 MB，已跳过");
+            if (f.isDirectory()) {
+                skipped++;
                 continue;
             }
-            if (files.size() >= 200) {
-                UiKit.warn("一次最多上传 200 个文件，其余请分批处理");
+            if (f.length() > MAX_FILE_BYTES) {
+                skipped++;
+                if (interactive) UiKit.warn("「" + f.getName() + "」超过 200 MB，已跳过");
+                continue;
+            }
+            if (files.size() >= MAX_FILES) {
+                if (interactive) UiKit.warn("一次最多上传 200 个文件，其余请分批处理");
                 break;
             }
+            if (files.contains(f)) continue;
             files.add(f);
             accepted++;
         }
-        status.setText("已选择 " + files.size() + " 个文件（本次新增 " + accepted + " 个）");
+        status.setText("已选择 " + files.size() + " 个文件（本次新增 " + accepted + " 个"
+                + (skipped > 0 ? "，跳过 " + skipped + " 个" : "") + "）");
         recomputeSuggestions();
     }
 

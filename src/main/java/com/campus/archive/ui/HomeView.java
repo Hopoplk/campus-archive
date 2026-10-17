@@ -3,92 +3,96 @@ package com.campus.archive.ui;
 import com.campus.archive.config.AppContext;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
-import javafx.scene.control.Label;
-import javafx.scene.control.ListView;
-import javafx.scene.layout.*;
+import javafx.scene.input.Dragboard;
+import javafx.scene.input.TransferMode;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.VBox;
 
-import java.util.Map;
+import java.io.File;
+import java.util.List;
 
 /**
- * 首页：只放"现在要做什么"——上传入口、最近材料与关键指标。
- * 刻意不堆砌高级功能，对应需求 NFR-UI-09 低信息负担。
+ * 首页：材料上传入口。
+ *
+ * <p>两个入口共用同一条上传链路：点击按钮走文件选择器；
+ * 把文件拖到虚线区域则把文件预填进同一个 {@link UploadDialog}，
+ * 因此尺寸、数量、归类建议与冲突提示的规则完全一致。</p>
  */
-public class HomeView extends VBox implements MainWindow.Refreshable {
+public class HomeView extends VBox {
+
+    private static final String DROP_ACTIVE = "drop-active";
 
     private final AppContext ctx;
-    private final ListView<String> recentList = new ListView<>();
-    private final Label totalValue = UiKit.label("0", "metric-value");
-    private final Label privateValue = UiKit.label("0", "metric-value");
-    private final Label trashedValue = UiKit.label("0", "metric-value");
-    private final Label strategyHint = UiKit.label("", "pattern-badge");
 
     public HomeView(AppContext ctx) {
         this.ctx = ctx;
         getStyleClass().add("content");
         setSpacing(16);
         build();
-        refresh();
     }
 
     private void build() {
-        // ---- 上传入口 ----
         Button upload = new Button("＋  上传材料");
         upload.getStyleClass().addAll("button", "primary-button");
         upload.setStyle("-fx-font-size: 15px; -fx-padding: 12 26 12 26;");
         upload.setOnAction(e -> new UploadDialog(ctx).showAndWait());
 
+        VBox dropArea = new VBox(6,
+                UiKit.label("把文件拖到这里", "drop-hint"),
+                UiKit.label("支持 PDF / Word / 图片 / 表格，单个不超过 200 MB", "muted"));
+        dropArea.setAlignment(Pos.CENTER);
+        dropArea.getStyleClass().add("drop-area");
+        VBox.setVgrow(dropArea, Priority.ALWAYS);
+
         HBox actions = new HBox(12, upload);
         actions.setAlignment(Pos.CENTER_LEFT);
 
-        VBox hero = new VBox(10,
-                UiKit.label("把成绩、证书和综测材料集中管理起来", "section-title"),
-                UiKit.label("本地优先 · 无需登录 · 私密材料加密存放", "muted"),
-                actions);
-        hero.getStyleClass().add("card");
+        VBox card = new VBox(14, dropArea, actions);
+        card.getStyleClass().addAll("card", "drop-card");
+        card.setMinHeight(200);
+        card.setPrefHeight(200);
+        enableDrop(card);
 
-        // ---- 指标卡 ----
-        HBox metrics = new HBox(14,
-                metric("材料总数", totalValue),
-                metric("私密材料", privateValue),
-                metric("回收站", trashedValue));
-        for (var n : metrics.getChildren()) HBox.setHgrow(n, Priority.ALWAYS);
-
-        // ---- 最近添加 ----
-        recentList.setPlaceholder(UiKit.label("还没有材料，点上方「上传材料」开始", "muted"));
-        VBox recent = new VBox(8, UiKit.label("最近添加", "card-title"), recentList);
-        recent.getStyleClass().add("card");
-        VBox.setVgrow(recentList, Priority.ALWAYS);
-        VBox.setVgrow(recent, Priority.ALWAYS);
-
-        // ---- 当前策略提示：让评审一眼看到模式 ① 在用 ----
-        VBox patternCard = new VBox(6,
-                UiKit.label("设计模式应用情况", "card-title"),
-                strategyHint,
-                UiKit.label("本原型在材料归类、导出备份两处分别引入了策略与模板方法两种模式，"
-                        + "详见「我的」页与随附的《第 5 周设计模式应用说明》。", "muted"));
-        patternCard.getStyleClass().add("card");
-
-        getChildren().addAll(hero, metrics, recent, patternCard);
+        getChildren().add(card);
     }
 
-    private VBox metric(String title, Label value) {
-        VBox box = new VBox(4, UiKit.label(title, "muted"), value);
-        box.getStyleClass().add("card");
-        box.setAlignment(Pos.CENTER_LEFT);
-        return box;
+    /** 整张卡片都是投放热区，拖入时高亮虚线框。 */
+    private void enableDrop(VBox card) {
+        card.setOnDragOver(e -> {
+            if (e.getDragboard().hasFiles()) e.acceptTransferModes(TransferMode.COPY);
+            e.consume();
+        });
+        card.setOnDragEntered(e -> {
+            if (e.getDragboard().hasFiles() && !card.getStyleClass().contains(DROP_ACTIVE)) {
+                card.getStyleClass().add(DROP_ACTIVE);
+            }
+            e.consume();
+        });
+        card.setOnDragExited(e -> {
+            card.getStyleClass().remove(DROP_ACTIVE);
+            e.consume();
+        });
+        card.setOnDragDropped(e -> {
+            Dragboard db = e.getDragboard();
+            boolean done = false;
+            if (db.hasFiles()) {
+                done = openWithDropped(db.getFiles());
+            }
+            e.setDropCompleted(done);
+            card.getStyleClass().remove(DROP_ACTIVE);
+            e.consume();
+        });
     }
 
-    @Override
-    public void refresh() {
-        Map<String, Object> stats = ctx.searchService().stats();
-        totalValue.setText(String.valueOf(stats.get("total")));
-        privateValue.setText(String.valueOf(stats.get("privateCount")));
-        trashedValue.setText(String.valueOf(stats.get("trashed")));
-        strategyHint.setText("策略模式①：" + ctx.materialService().currentSuggestionStrategy());
-
-        recentList.getItems().setAll(ctx.searchService().recent(8).stream()
-                .map(m -> "· " + m.getFileName() + "　" + m.getCategoryName() + "　" + UiKit.fmtDate(m.getCreatedAt())
-                        + (m.getIsPrivate() ? "　[私密]" : ""))
-                .toList());
+    /** 目录不是材料，先过滤掉；其余交给上传对话框统一做尺寸与数量校验。 */
+    private boolean openWithDropped(List<File> dropped) {
+        List<File> usable = dropped.stream().filter(f -> !f.isDirectory()).toList();
+        if (usable.isEmpty()) {
+            UiKit.warn("请拖入文件，而不是文件夹");
+            return false;
+        }
+        new UploadDialog(ctx, usable).showAndWait();
+        return true;
     }
 }
