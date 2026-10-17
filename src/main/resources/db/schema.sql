@@ -33,16 +33,6 @@ CREATE TABLE IF NOT EXISTS material_tag (
   PRIMARY KEY (material_id, tag_id)
 );
 
-CREATE TABLE IF NOT EXISTS schedule (
-  id        VARCHAR(36)  PRIMARY KEY,
-  title     VARCHAR(128) NOT NULL,
-  due_time  DATETIME     NOT NULL,
-  remind_at DATETIME,
-  status    VARCHAR(16)  NOT NULL DEFAULT 'PENDING',
-  reminded  TINYINT      NOT NULL DEFAULT 0,
-  remark    VARCHAR(512)
-);
-
 CREATE TABLE IF NOT EXISTS security_setting (
   id         VARCHAR(36) PRIMARY KEY,
   key_hash   CHAR(64)    NOT NULL,
@@ -76,7 +66,6 @@ CREATE INDEX IF NOT EXISTS idx_material_used     ON material(used_at DESC);
 CREATE INDEX IF NOT EXISTS idx_material_hash     ON material(content_hash);
 CREATE INDEX IF NOT EXISTS idx_material_deleted  ON material(deleted_at);
 CREATE INDEX IF NOT EXISTS idx_material_name     ON material(file_name);
-CREATE INDEX IF NOT EXISTS idx_schedule_remind   ON schedule(remind_at, status, reminded);
 
 -- 内置一级分类（分类服务于查找，不增加用户负担）
 INSERT OR IGNORE INTO category(id, name, sort) VALUES

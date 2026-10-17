@@ -87,7 +87,7 @@ public class SettingsView extends VBox implements MainWindow.Refreshable {
         actions.setAlignment(Pos.CENTER_LEFT);
 
         VBox box = new VBox(8, UiKit.label("导入 / 导出与备份", "card-title"), actions,
-                UiKit.label("备份包内含全部材料文件、schedule.json（日程）与 manifest.json（清单，含 SHA-256 校验和）。"
+                UiKit.label("备份包内含全部材料文件与 manifest.json（清单，含 SHA-256 校验和）。"
                         + "导入采用单事务，失败会整体回滚并清理已写入的文件。", "muted"));
         box.getStyleClass().add("card");
         return box;
@@ -111,17 +111,7 @@ public class SettingsView extends VBox implements MainWindow.Refreshable {
             });
         });
 
-        Button demoReminder = new Button("演示：触发一次观察者分发");
-        demoReminder.getStyleClass().addAll("button", "ghost-button");
-        demoReminder.setOnAction(e -> {
-            int n = ctx.reminderScheduler().scanOnce();
-            UiKit.info("已触发提醒扫描，命中 " + n + " 条。\n"
-                    + "事件同时送达：" + ctx.reminderSubject().observers().stream()
-                    .map(o -> o.name()).reduce((a, b) -> a + "、 " + b).orElse("无")
-                    + (n == 0 ? "\n\n（没有到期事项，可在日程页新建一条提醒时间为 1 分钟后的日程再试）" : ""));
-        });
-
-        HBox actions = new HBox(8, demoStrategy, demoReminder);
+        HBox actions = new HBox(8, demoStrategy);
         actions.setAlignment(Pos.CENTER_LEFT);
 
         VBox box = new VBox(8, UiKit.label("设计模式应用（现场自证）", "card-title"),
@@ -145,10 +135,7 @@ public class SettingsView extends VBox implements MainWindow.Refreshable {
                 "① 策略模式（归类建议）：SuggestionEngine 持有 CategorySuggestionStrategy，当前策略 = "
                         + ctx.materialService().currentSuggestionStrategy() + "\n"
                         + "② 模板方法模式（导出/备份）：AbstractArchiveExporter.export() 固定流程骨架，"
-                        + "具体实现 = SelectionExportExporter（选定材料导出）、FullBackupExporter（全量备份）\n"
-                        + "③ 观察者模式（日程提醒）：ReminderSubject 当前注册 " + ctx.reminderSubject().observerCount()
-                        + " 个观察者 = " + ctx.reminderSubject().observers().stream()
-                        .map(o -> o.name()).reduce((a, b) -> a + "、 " + b).orElse("无"));
+                        + "具体实现 = SelectionExportExporter（选定材料导出）、FullBackupExporter（全量备份）");
     }
 
     private void onExport() {
