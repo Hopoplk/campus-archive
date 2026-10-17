@@ -19,8 +19,6 @@ public interface MaterialService {
 
     Result<Void> moveToCategory(String id, String categoryId);
 
-    Result<Void> setTags(String id, String commaSeparatedTags);
-
     /** 普通删除：进入回收站，不物理删除（对应 UR-08）。 */
     Result<Void> softDelete(List<String> ids);
 

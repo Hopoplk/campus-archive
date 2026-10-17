@@ -74,10 +74,14 @@ public class UploadDialog extends Dialog<Void> {
                 if (empty || item == null) {
                     setText(null);
                     setGraphic(null);
+                    setStyle("");
                     return;
                 }
-                setText(item.getName());
-                setGraphic(UiKit.depthBadge(depthOf(getTreeItem())));
+                int depth = depthOf(getTreeItem());
+                // 与档案页保持一致：层级数字 + 名称，按层级上色，文字交给 skin 绘制
+                setText(UiKit.depthText(depth, item.getName()));
+                setGraphic(null);
+                setStyle("-fx-text-fill:" + UiKit.depthColor(depth) + ";");
             }
         });
         categoryTree.getSelectionModel().selectedItemProperty().addListener((obs, old, sel) -> {
@@ -128,6 +132,7 @@ public class UploadDialog extends Dialog<Void> {
 
     /** 层级：顶层为 0（虚拟根的父节点为 null，因此从根的子节点起算）。 */
     private static int depthOf(TreeItem<Category> item) {
+        if (item == null) return 0;
         int depth = 0;
         for (TreeItem<Category> p = item.getParent(); p != null && p.getParent() != null; p = p.getParent()) {
             depth++;

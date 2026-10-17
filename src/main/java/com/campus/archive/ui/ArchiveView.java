@@ -12,6 +12,7 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
@@ -24,12 +25,15 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * 我的档案：分类 / 标签 / 类型组合筛选 + 材料列表 + 生命周期操作。
+ * 我的档案：分类 / 类型组合筛选 + 材料列表 + 生命周期操作。
  * 私密材料在未解锁时一律显示为「🔒 已加密」且不可预览（对应 AC-04）。
  */
 public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
@@ -44,13 +48,15 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
     private final ComboBox<String> typeFilter = new ComboBox<>();
     private final CheckBox privateOnly = new CheckBox("只看私密材料");
     private final TextField keywordField = new TextField();
+    private final TextField categoryKeywordField = new TextField();
+    /** 分类 ID → 分类，用于按 parentId 链计算层级（比读 TreeItem 稳定）。 */
+    private final Map<String, Category> categoryIndex = new LinkedHashMap<>();
     private final TableView<Material> table = new TableView<>();
     private final Label statusLabel = UiKit.label("", "muted");
 
     // 需要随"当前是不是回收站"切换状态的按钮
     private final Button renameBtn = new Button();
     private final Button moveBtn = new Button();
-    private final Button tagBtn = new Button();
     private final Button privateBtn = new Button();
     private final Button restoreBtn = new Button();
     private final Button deleteBtn = new Button();
@@ -80,19 +86,28 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
                     setStyle("");
                     return;
                 }
-                int depth = depthOf(getTreeItem());
-                setText(item.getName());
-                // 层级徽标：顶层为 0，与上传窗口保持一致
-                setGraphic(depth < 0 ? null : UiKit.depthBadge(depth));
-                // 回收站那一项用醒目一点的颜色，和真实分类区分开
-                setStyle(TRASH_ID.equals(item.getId())
-                        ? "-fx-text-fill:#c0392b; -fx-font-weight:bold;" : "");
+                int depth = depthOf(item);
+                String kw = categoryKeywordField.getText();
+                boolean hit = kw != null && !kw.isBlank()
+                        && item.getName().toLowerCase().contains(kw.trim().toLowerCase());
+
+                // 用 setText 而不是 setGraphic：文字交给 skin 绘制，选中态永远正常
+                setText(UiKit.depthText(depth, item.getName()));
+                setGraphic(null);
+
+                StringBuilder style = new StringBuilder("-fx-text-fill:").append(UiKit.depthColor(depth)).append(';');
+                if (hit) style.append("-fx-font-weight:bold;");
+                if (TRASH_ID.equals(item.getId())) style.append("-fx-text-fill:#c0392b; -fx-font-weight:bold;");
+                setStyle(style.toString());
             }
         });
         categoryTree.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
             updateActionState();
             reload();
         });
+        categoryKeywordField.setPromptText("搜索分类名…");
+        categoryKeywordField.textProperty().addListener((o, a, b) -> rebuildTree());
+
         installCategoryContextMenu();
 
         typeFilter.getItems().add("全部类型");
@@ -102,7 +117,7 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
 
         privateOnly.setOnAction(e -> reload());
 
-        keywordField.setPromptText("搜索全库文件名、分类或标签…");
+        keywordField.setPromptText("搜索全库文件名或分类…");
         keywordField.setOnAction(e -> reload());
 
         refreshBtn.getStyleClass().addAll("button", "ghost-button");
@@ -112,6 +127,7 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
         clear.getStyleClass().addAll("button", "ghost-button");
         clear.setOnAction(e -> {
             keywordField.clear();
+            categoryKeywordField.clear();
             typeFilter.getSelectionModel().selectFirst();
             privateOnly.setSelected(false);
             selectTreeNode(ALL_ID);
@@ -131,6 +147,7 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
 
         VBox filters = new VBox(10,
                 UiKit.label("我的档案", "card-title"),
+                categoryKeywordField,
                 UiKit.label("分类（右键可新建/重命名/删除）", "muted"), categoryTree, catOps,
                 UiKit.label("类型", "muted"), typeFilter,
                 privateOnly, clear);
@@ -142,6 +159,25 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
         nameCol.setCellValueFactory(c -> new SimpleStringProperty(
                 c.getValue().getIsPrivate() ? "🔒 " + c.getValue().getFileName() : c.getValue().getFileName()));
         nameCol.setPrefWidth(260);
+        nameCol.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(String name, boolean empty) {
+                super.updateItem(name, empty);
+                if (empty || name == null) {
+                    setText(null);
+                    setGraphic(null);
+                    return;
+                }
+                String kw = keywordField.getText();
+                if (kw == null || kw.isBlank()) {
+                    setText(name);
+                    setGraphic(null);
+                } else {
+                    setText(null);
+                    setGraphic(UiKit.highlight(name, kw));
+                }
+            }
+        });
 
         TableColumn<Material, String> catCol = new TableColumn<>("分类");
         catCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getCategoryName()));
@@ -155,16 +191,11 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
         sizeCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().sizeText()));
         sizeCol.setPrefWidth(70);
 
-        TableColumn<Material, String> tagCol = new TableColumn<>("标签");
-        tagCol.setCellValueFactory(c -> new SimpleStringProperty(
-                c.getValue().getTagText() == null ? "" : c.getValue().getTagText()));
-        tagCol.setPrefWidth(140);
-
         TableColumn<Material, String> timeCol = new TableColumn<>("上传时间");
         timeCol.setCellValueFactory(c -> new SimpleStringProperty(UiKit.fmt(c.getValue().getCreatedAt())));
         timeCol.setPrefWidth(130);
 
-        table.getColumns().setAll(List.of(nameCol, catCol, typeCol, sizeCol, tagCol, timeCol));
+        table.getColumns().setAll(List.of(nameCol, catCol, typeCol, sizeCol, timeCol));
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         table.setPlaceholder(UiKit.label("没有符合条件的材料", "muted"));
         table.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
@@ -181,10 +212,6 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
         moveBtn.getStyleClass().addAll("button", "ghost-button");
         moveBtn.setOnAction(e -> onMove());
 
-        tagBtn.setText("编辑标签");
-        tagBtn.getStyleClass().addAll("button", "ghost-button");
-        tagBtn.setOnAction(e -> onTags());
-
         privateBtn.setText("设为私密 / 取消");
         privateBtn.getStyleClass().addAll("button", "ghost-button");
         privateBtn.setOnAction(e -> onTogglePrivate());
@@ -197,7 +224,7 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
         deleteBtn.getStyleClass().addAll("button", "ghost-button");
         deleteBtn.setOnAction(e -> onDelete());
 
-        HBox actions = new HBox(8, preview, export, renameBtn, moveBtn, tagBtn, privateBtn, restoreBtn, deleteBtn);
+        HBox actions = new HBox(8, preview, export, renameBtn, moveBtn, privateBtn, restoreBtn, deleteBtn);
         actions.setAlignment(Pos.CENTER_LEFT);
         actions.setPadding(new Insets(10, 0, 0, 0));
 
@@ -252,8 +279,10 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
 
         List<Category> flat = ctx.categoryService().listAll();
         Map<String, TreeItem<Category>> nodes = new LinkedHashMap<>();
+        categoryIndex.clear();
         for (Category c : flat) {
             nodes.put(c.getId(), new TreeItem<>(c));
+            categoryIndex.put(c.getId(), c);
         }
 
         TreeItem<Category> root = new TreeItem<>(new Category(ALL_ID, "全部分类", 0));
@@ -268,9 +297,12 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
 
         int trashCount = ctx.materialService().listTrashed().size();
         root.getChildren().add(new TreeItem<>(new Category(TRASH_ID, "🗑 回收站 (" + trashCount + ")", 999)));
+        applyCategoryFilter(root);
 
         categoryTree.setRoot(root);
         selectTreeNode(keepId == null ? ALL_ID : keepId);
+        // 换根后可见单元格可能仍是旧实例，强制重走一遍 updateItem，避免选中行渲染成空白
+        categoryTree.refresh();
         updateActionState();
     }
 
@@ -291,14 +323,73 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
         return null;
     }
 
+    /**
+     * 分类搜索：仅保留名称命中的节点及其祖先。
+     * 当前选中的分支始终保留，避免输入关键字时"选中项凭空消失、材料范围被悄悄改掉"。
+     */
+    private void applyCategoryFilter(TreeItem<Category> root) {
+        String kw = categoryKeywordField.getText() == null ? "" : categoryKeywordField.getText().trim().toLowerCase();
+        if (kw.isEmpty()) return;
+
+        Set<String> keepIds = selectionPathIds(root, selectedNodeId());
+        for (Iterator<TreeItem<Category>> it = root.getChildren().iterator(); it.hasNext(); ) {
+            if (!prune(it.next(), kw, keepIds)) it.remove();
+        }
+        expandAll(root);
+    }
+
+    private boolean prune(TreeItem<Category> node, String kw, Set<String> keepIds) {
+        Category c = node.getValue();
+        boolean selfMatch = c != null && c.getName().toLowerCase().contains(kw);
+        // 命中的文件夹保留整棵子树：搜到「英语等级」时，它下面的「四级/六级」应当一起可见
+        if (selfMatch) return true;
+
+        boolean selfKeep = c != null && keepIds.contains(c.getId());
+        boolean childKept = false;
+        for (Iterator<TreeItem<Category>> it = node.getChildren().iterator(); it.hasNext(); ) {
+            if (prune(it.next(), kw, keepIds)) childKept = true;
+            else it.remove();
+        }
+        return selfKeep || childKept;
+    }
+
+    /** 从当前选中节点一路向上的 ID 集合，保证筛选时这条分支不会被剪掉。 */
+    private static Set<String> selectionPathIds(TreeItem<Category> root, String id) {
+        Set<String> keep = new LinkedHashSet<>();
+        if (id == null) return keep;
+        TreeItem<Category> hit = findNodeStatic(root, id);
+        for (TreeItem<Category> n = hit; n != null; n = n.getParent()) {
+            if (n.getValue() != null) keep.add(n.getValue().getId());
+        }
+        return keep;
+    }
+
+    private static TreeItem<Category> findNodeStatic(TreeItem<Category> node, String id) {
+        if (node.getValue() != null && node.getValue().getId().equals(id)) return node;
+        for (TreeItem<Category> child : node.getChildren()) {
+            TreeItem<Category> hit = findNodeStatic(child, id);
+            if (hit != null) return hit;
+        }
+        return null;
+    }
+
+    private static void expandAll(TreeItem<Category> node) {
+        node.setExpanded(true);
+        for (TreeItem<Category> child : node.getChildren()) expandAll(child);
+    }
+
     /** 层级编号：根「全部分类」与回收站不参与编号，真实分类从顶层 0 开始。 */
-    private static int depthOf(TreeItem<Category> item) {
-        if (item == null || item.getValue() == null) return -1;
-        String id = item.getValue().getId();
-        if (ALL_ID.equals(id) || TRASH_ID.equals(id)) return -1;
+    private int depthOf(Category c) {
+        if (c == null) return -1;
+        if (ALL_ID.equals(c.getId()) || TRASH_ID.equals(c.getId())) return -1;
         int depth = 0;
-        for (TreeItem<Category> p = item.getParent(); p != null && p.getValue() != null; p = p.getParent()) {
-            if (!ALL_ID.equals(p.getValue().getId())) depth++;
+        String pid = c.getParentId();
+        int guard = 0;
+        while (pid != null && !pid.isBlank() && guard++ < 32) {
+            Category parent = categoryIndex.get(pid);
+            if (parent == null) break;
+            depth++;
+            pid = parent.getParentId();
         }
         return depth;
     }
@@ -352,7 +443,6 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
 
         renameBtn.setDisable(trash);
         moveBtn.setDisable(trash);
-        tagBtn.setDisable(trash);
         privateBtn.setDisable(trash);
 
         restoreBtn.setVisible(trash);
@@ -385,7 +475,9 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
                     ? "回收站内共 " + page.total() + " 项（在此删除将永久销毁）"
                     : "回收站内搜索「" + kw + "」：共 " + page.total() + " 项");
         } else if (!kw.isEmpty()) {
-            statusLabel.setText("全库搜索「" + kw + "」：共 " + page.total() + " 条（已忽略分类筛选）");
+            Category c = selectedCategory();
+            String scope = (c == null || ALL_ID.equals(c.getId())) ? "全库" : "「" + c.getName() + "」（含子分类）";
+            statusLabel.setText(scope + "搜索「" + kw + "」：共 " + page.total() + " 条");
         } else {
             Category c = selectedCategory();
             String scope = (c == null || ALL_ID.equals(c.getId())) ? "全部分类" : c.getName() + "（含子分类）";
@@ -396,9 +488,9 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
     /**
      * 组装查询条件。
      *
-     * <p>一条重要规则：<b>只要输入了关键词，就按全库搜索</b>，不再受左侧分类筛选限制——
-     * 用户输入关键词时想找的是"这份东西在哪"，而不是"当前分类里有没有"。
-     * 回收站是个例外：它本身就是一个明确的范围，在里面搜索仍在回收站内进行。</p>
+     * <p>关键词与分类筛选是<b>叠加</b>关系：先在左侧选中某个分类，再输入关键词，
+     * 只在该分类（含子分类）范围内检索；只有选中「全部分类」时才是全库搜索。
+     * 回收站本身就是一个明确范围，在里面搜索仍在回收站内进行。</p>
      */
     private MaterialQuery buildQuery() {
         MaterialQuery q = new MaterialQuery();
@@ -408,7 +500,7 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
 
         if (trash) {
             q.setOnlyTrashed(true);   // 排序由 MaterialQuery 默认按删除时间倒序
-        } else if (!hasKeyword && c != null && !ALL_ID.equals(c.getId())) {
+        } else if (c != null && !ALL_ID.equals(c.getId())) {
             // 点父分类也要能看到子分类里的材料，所以按整棵子树筛
             q.setCategoryIds(ctx.categoryService().subtreeIds(c.getId()));
         }
@@ -571,14 +663,6 @@ public class ArchiveView extends BorderPane implements MainWindow.Refreshable {
         d.setHeaderText(null);
         d.setContentText("目标分类");
         d.showAndWait().ifPresent(c -> report(ctx.materialService().moveToCategory(m.getId(), c.getId())));
-    }
-
-    private void onTags() {
-        Material m = single();
-        if (m == null) return;
-        String current = m.getTagText() == null ? "" : m.getTagText().replace(" / ", ",");
-        UiKit.prompt("编辑标签", "多个标签用逗号分隔", current)
-                .ifPresent(v -> report(ctx.materialService().setTags(m.getId(), v)));
     }
 
     private void onTogglePrivate() {

@@ -105,19 +105,6 @@ class MaterialServiceTest {
     }
 
     @Test
-    @DisplayName("标签可以编辑并按标签检索")
-    void tagsCanBeEditedAndSearched() {
-        ctx.materialService().upload(List.of(file("数学建模竞赛证书.pdf", "mcm")), new UploadOptions());
-        Material m = ctx.searchService().search(new MaterialQuery().setKeyword("数学建模"), 1, 5).items().get(0);
-
-        assertTrue(ctx.materialService().setTags(m.getId(), "竞赛, 保研, 数学").isSuccess());
-
-        List<Material> byTag = ctx.searchService().search(new MaterialQuery().setTag("保研"), 1, 10).items();
-        assertEquals(1, byTag.size());
-        assertTrue(byTag.get(0).getTagText().contains("竞赛"));
-    }
-
-    @Test
     @DisplayName("普通删除进回收站，恢复后回到原分类（对应 AC-08）")
     void softDeleteThenRestore() {
         ctx.materialService().upload(List.of(file("实习鉴定表.docx", "intern")), new UploadOptions());

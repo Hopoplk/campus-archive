@@ -204,18 +204,30 @@
     -fx-background-color: #eaf2ff;
 }
 
-/* ---------- 分类树层级徽标 ---------- */
-.depth-badge {
-    -fx-font-size: 10.5px;
+
+/* ---------- 关键词高亮 ---------- */
+.hl {
+    -fx-background-color: #ffe08a;
+    -fx-background-radius: 3;
+    -fx-text-fill: #1f3864;
     -fx-font-weight: bold;
-    -fx-padding: 0 5 0 5;
-    -fx-background-radius: 8;
-    -fx-text-fill: white;
-    -fx-min-width: 16;
-    -fx-alignment: center;
+    -fx-padding: 0 1 0 1;
 }
-.depth-badge.depth-0 { -fx-background-color: #1f3864; }
-.depth-badge.depth-1 { -fx-background-color: #2f5597; }
-.depth-badge.depth-2 { -fx-background-color: #237a63; }
-.depth-badge.depth-3 { -fx-background-color: #9a6a12; }
-.depth-badge.depth-4 { -fx-background-color: #7a4f9e; }
+.plain-chunk {
+    -fx-padding: 0;
+    -fx-text-fill: #2b3445;
+}
+/* 选中行里只反白普通片段，黄底高亮保持深色，保证对比度 */
+.table-row-cell:selected .plain-chunk,
+.tree-cell:selected .plain-chunk {
+    -fx-text-fill: #ffffff;
+}
+.table-row-cell:selected .hl,
+.tree-cell:selected .hl {
+    -fx-text-fill: #1f3864;
+}
+
+/* 选中行统一用浅蓝底 + 深色字，避免"浅灰底 + 白字"看不见内容 */
+.tree-cell:selected {
+    -fx-background-color: #eaf2ff;
+}

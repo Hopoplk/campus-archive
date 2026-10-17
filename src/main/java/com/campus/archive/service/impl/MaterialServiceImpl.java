@@ -87,9 +87,6 @@ public class MaterialServiceImpl implements MaterialService {
 
                 repos.tx(d -> {
                     d.material().insert(m);
-                    if (opt.getTags() != null && !opt.getTags().isBlank()) {
-                        attachTags(d, m.getId(), opt.getTags());
-                    }
                     d.config().put("last.category", categoryId);
                     return null;
                 });
@@ -135,30 +132,6 @@ public class MaterialServiceImpl implements MaterialService {
         }
         repos.query(d -> d.material().updateCategory(id, categoryId));
         return Result.ok();
-    }
-
-    @Override
-    public Result<Void> setTags(String id, String commaSeparatedTags) {
-        repos.tx(d -> {
-            attachTags(d, id, commaSeparatedTags);
-            return null;
-        });
-        return Result.ok();
-    }
-
-    private void attachTags(com.campus.archive.config.DaoBundle d, String materialId, String csv) {
-        d.tag().detachAll(materialId);
-        if (csv == null) return;
-        for (String raw : csv.split("[,，;；]")) {
-            String name = raw.trim();
-            if (name.isEmpty()) continue;
-            var existing = d.tag().findByName(name);
-            String tagId = existing != null ? existing.getId() : UUID.randomUUID().toString();
-            if (existing == null) {
-                d.tag().insert(new com.campus.archive.entity.Tag(tagId, name));
-            }
-            d.tag().attach(materialId, tagId);
-        }
     }
 
     /* ============================ 删除 / 恢复 ============================ */
@@ -215,7 +188,6 @@ public class MaterialServiceImpl implements MaterialService {
                 if (vault != null) vaultPaths.add(vault.getEncryptedPath());
                 paths.add(m.getStoredPath());
 
-                d.material().deleteTagLinks(id);
                 d.material().deleteVaultEntry(id);
                 d.material().deleteTrash(id);
                 d.material().deleteByIds(List.of(id));

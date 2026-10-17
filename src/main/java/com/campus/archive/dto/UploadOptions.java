@@ -4,11 +4,11 @@ package com.campus.archive.dto;
 public class UploadOptions {
 
     private String categoryId;
-    private String tags;
 
     public String getCategoryId() { return categoryId; }
-    public UploadOptions setCategoryId(String categoryId) { this.categoryId = categoryId; return this; }
 
-    public String getTags() { return tags; }
-    public UploadOptions setTags(String tags) { this.tags = tags; return this; }
+    public UploadOptions setCategoryId(String categoryId) {
+        this.categoryId = categoryId;
+        return this;
+    }
 }
